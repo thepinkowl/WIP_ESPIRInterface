@@ -1,0 +1,6 @@
+{
+    "port": "/dev/cu.usbserial-14610",
+    "board": "arduino:avr:uno",
+    "programmer": "AVRISP mkII",
+    "sketch": "src/arduino-ir-receiver/arduino-ir-receiver.ino"
+}
