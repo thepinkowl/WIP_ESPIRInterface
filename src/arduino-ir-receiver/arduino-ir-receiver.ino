@@ -1,104 +1,302 @@
-/*
-This file is part of a "The Pink Owl" project.
-
-It is a free software under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE Version 3:
-you can redistribute it and/or modify under the same terms.
-
-Please see LICENSE file at the root of this project or visit: http://www.affero.org/oagf.html
-
-@author Valentin Viennot
-*/
+//------------------------------------------------------------------------------
+// Include the IRremote library header
+//
+#define SEND_PIN 3
+#define SEPARATOR ','
 #include <IRremote.h>
 
-// // the loop function runs over and over again forever
-// void loop()
-// {
-//     digitalWrite(LED_BUILTIN, HIGH); // turn the LED on (HIGH is the voltage level)
-//     delay(1000);                     // wait for a second
-//     digitalWrite(LED_BUILTIN, LOW);  // turn the LED off by making the voltage LOW
-//     delay(1000);                     // wait for a second
-// }
-
-String ir[3];
-unsigned int irBuf[100];
-unsigned int irBufLen;
-unsigned int irBufType;
-boolean repeat = false;
-
+//------------------------------------------------------------------------------
+// Tell IRremote which Arduino pin is connected to the IR Receiver (TSOP4838)
+//
 int recvPin = 11;
-IRrecv irrecv(recvPin); //pin 11
-IRsend irsend;          //pin 3 on UNO,  Pin 13 on Leo, Pin 9 on Mega
+IRrecv irrecv(recvPin);
+IRsend irsend;
 
-void setup(void)
+//+=============================================================================
+// Configure the Arduino
+//
+void setup()
 {
-    // pinMode(LED_BUILTIN, OUTPUT);
-    Serial.begin(9600);
-    irrecv.enableIRIn();
-    Serial.println("Start");
+    Serial.begin(9600);  // Status message will be sent to PC at 9600 baud
+    irrecv.enableIRIn(); // Start the receiver
 }
 
-void loop(void)
+//+=============================================================================
+// Display IR code
+//
+void ircode(decode_results *results)
 {
-    decode_results results;
-    if (irrecv.decode(&results))
-    {                       // Grab an IR code
-        dumpCode(&results); // Output the results as source code
-        delay(50);
-        irrecv.resume(); // Prepare for the next value
-    }
-
-    if (repeat)
+    // Panasonic has an Address
+    if (results->decode_type == PANASONIC)
     {
-        sendCode();
+        Serial.print(results->address, HEX);
+        Serial.print(":");
+    }
+
+    // Print Code
+    Serial.print(results->value, HEX);
+}
+
+//+=============================================================================
+// Display encoding type
+//
+void encoding(decode_results *results)
+{
+    switch (results->decode_type)
+    {
+    default:
+    case UNKNOWN:
+        Serial.print("UNKNOWN");
+        break;
+    case NEC:
+        Serial.print("NEC");
+        break;
+    case SONY:
+        Serial.print("SONY");
+        break;
+    case RC5:
+        Serial.print("RC5");
+        break;
+    case RC6:
+        Serial.print("RC6");
+        break;
+    case DISH:
+        Serial.print("DISH");
+        break;
+    case SHARP:
+        Serial.print("SHARP");
+        break;
+    case JVC:
+        Serial.print("JVC");
+        break;
+    case SANYO:
+        Serial.print("SANYO");
+        break;
+    case MITSUBISHI:
+        Serial.print("MITSUBISHI");
+        break;
+    case SAMSUNG:
+        Serial.print("SAMSUNG");
+        break;
+    case LG:
+        Serial.print("LG");
+        break;
+    case WHYNTER:
+        Serial.print("WHYNTER");
+        break;
+    case AIWA_RC_T501:
+        Serial.print("AIWA_RC_T501");
+        break;
+    case PANASONIC:
+        Serial.print("PANASONIC");
+        break;
+    case DENON:
+        Serial.print("Denon");
+        break;
     }
 }
 
-void dumpCode(decode_results *results)
+//+=============================================================================
+// Dump out the decode_results structure.
+//
+void dumpInfo(decode_results *results)
 {
-    int codeType = results->decode_type;
-    int codeLen = results->bits;
-    unsigned long codeValue = results->value;
-    String data_status;
-    data_status += F("{\"T\":\"");
-    data_status += codeType;
-    data_status += F("\",\"D\":[\"");
-    data_status += codeValue;
-    data_status += F("\",\"");
+    // Check if the buffer overflowed
+    if (results->overflow)
+    {
+        Serial.println("IR code too long. Edit IRremoteInt.h and increase RAWBUF");
+        return;
+    }
+
+    // Show Encoding standard
+    Serial.print("Encoding  : ");
+    encoding(results);
+    Serial.println("");
+
+    // Show Code & length
+    Serial.print("Code      : ");
+    ircode(results);
+    Serial.print(" (");
+    Serial.print(results->bits, DEC);
+    Serial.println(" bits)");
+}
+
+//+=============================================================================
+// Dump out the decode_results structure.
+//
+void dumpRaw(decode_results *results)
+{
+    // Print Raw data
+    Serial.print("Timing[");
+    Serial.print(results->rawlen - 1, DEC);
+    Serial.println("]: ");
+
     for (int i = 1; i < results->rawlen; i++)
     {
-        data_status += results->rawbuf[i] * USECPERTICK;
-        if (i != results->rawlen - 1)
-            data_status += ",";
+        unsigned long x = results->rawbuf[i] * USECPERTICK;
+        if (!(i & 1))
+        { // even
+            Serial.print("-");
+            if (x < 1000)
+                Serial.print(" ");
+            if (x < 100)
+                Serial.print(" ");
+            Serial.print(x, DEC);
+        }
+        else
+        { // odd
+            Serial.print("     ");
+            Serial.print("+");
+            if (x < 1000)
+                Serial.print(" ");
+            if (x < 100)
+                Serial.print(" ");
+            Serial.print(x, DEC);
+            if (i < results->rawlen - 1)
+                Serial.print(", "); //',' not needed for last one
+        }
+        if (!(i % 8))
+            Serial.println("");
     }
-    data_status += F(",\",\"");
-    data_status += results->rawlen;
-
-    data_status += F("\"]}");
-    Serial.println(F("Got IR Code"));
-    Serial.println(data_status);
+    Serial.println(""); // Newline
 }
 
-void sendCode()
+//+=============================================================================
+// Dump out the decode_results structure.
+//
+void dumpCode(decode_results *results)
 {
+    // Start declaration
+    Serial.print("unsigned int  ");         // variable type
+    Serial.print("rawData[");               // array name
+    Serial.print(results->rawlen - 1, DEC); // array size
+    Serial.print("] = {");                  // Start declaration
 
-    irsend.sendRaw(irBuf, irBufLen, 38);
-    delay(50);
-    irrecv.enableIRIn();
-}
-
-void stringToIntArry(String irRawString)
-{
-    String dataShort = "";
-    int counter = 0;
-    for (int i = 0; i <= irRawString.length(); i++)
+    // Dump data
+    for (int i = 1; i < results->rawlen; i++)
     {
-        dataShort += irRawString[i];
-        if (irRawString[i] == ',')
+        Serial.print(results->rawbuf[i] * USECPERTICK, DEC);
+        if (i < results->rawlen - 1)
+            Serial.print(","); // ',' not needed on last one
+        if (!(i & 1))
+            Serial.print(" ");
+    }
+
+    // End declaration
+    Serial.print("};"); //
+
+    // Comment
+    Serial.print("  // ");
+    encoding(results);
+    Serial.print(" ");
+    ircode(results);
+
+    // Newline
+    Serial.println("");
+
+    // Now dump "known" codes
+    if (results->decode_type != UNKNOWN)
+    {
+
+        // Some protocols have an address
+        if (results->decode_type == PANASONIC)
         {
-            dataShort = dataShort.substring(0, dataShort.length() - 1);
-            irBuf[counter] = dataShort.toInt();
-            counter = counter + 1;
-            dataShort = "";
+            Serial.print("unsigned int  addr = 0x");
+            Serial.print(results->address, HEX);
+            Serial.println(";");
+        }
+
+        // All protocols have data
+        Serial.print("unsigned int  data = 0x");
+        Serial.print(results->value, HEX);
+        Serial.println(";");
+    }
+}
+
+void sendRawFromSerial()
+{
+    String signal = Serial.readString();
+    signal.replace(" ", ""); // remove spaces
+    if (signal.length() == 0) {
+        return;
+    }
+    int codeLength = countSeparators(signal) + 1;
+    Serial.println("Sending: " + signal);
+    Serial.println("size " + codeLength);
+    Serial.flush();
+    int khz = 38; // 38kHz carrier frequency for the NEC protocol
+    unsigned int *irSignal = stringToBuf(signal, codeLength);
+    irsend.sendRaw(irSignal, codeLength, khz); //Note the approach used to automatically calculate the size of the array.
+    // irsend.sendNEC(0xFF10EF, 32);
+    delay(1000);
+    free(irSignal);
+    while (Serial.available()) {
+        Serial.read();
+    }
+    Serial.println("EOT.");
+}
+
+unsigned int *stringToBuf(String signal, int codeLength)
+{
+    unsigned int *buf = NULL;
+    buf = (unsigned int *)malloc(codeLength * sizeof(unsigned int));
+    int startIndex = 0;
+    int endIndex = 0;
+    String subCode = "";
+    for (int i = 0; i < codeLength; ++i)
+    {
+        endIndex = getNextSeparatorPosition(signal, startIndex);
+        subCode = signal.substring(startIndex, endIndex);
+        buf[i] = subCode.toInt();
+        startIndex = endIndex + 1;
+    }
+    return buf;
+}
+
+int getNextSeparatorPosition(String signal, int startIndex)
+{
+    int pos = signal.indexOf(SEPARATOR, startIndex);
+    if (pos < 0)
+    {
+        return signal.length();
+    }
+    return pos;
+}
+
+int countSeparators(String str)
+{
+    int count = 0;
+    for (int i = 0; i < str.length(); ++i)
+    {
+        if (str.charAt(i) == SEPARATOR)
+        {
+            ++count;
         }
     }
+    return count;
+}
+
+//+=============================================================================
+// The repeating section of the code
+//
+void loop()
+{
+    decode_results results; // Somewhere to store the results
+
+    if (irrecv.decode(&results))
+    {                       // Grab an IR code
+        dumpInfo(&results); // Output the results
+        dumpRaw(&results);  // Output the results in RAW format
+        dumpCode(&results); // Output the results as source code
+        Serial.println(""); // Blank line between entries
+        irrecv.resume();    // Prepare for the next value
+    }
+
+    if (Serial.available())
+    {
+        sendRawFromSerial();
+        irrecv.enableIRIn();
+    }
+
+    delay(50);
 }
