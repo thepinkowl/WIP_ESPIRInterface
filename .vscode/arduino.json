@@ -1,5 +1,5 @@
 {
-    "port": "/dev/cu.usbserial-14410",
+    "port": "/dev/cu.SLAB_USBtoUART",
     "board": "esp32:esp32:esp32",
     "programmer": "AVRISP mkII",
     "sketch": "src/arduino-ir-receiver/arduino-ir-receiver.ino",
